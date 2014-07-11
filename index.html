@@ -48,7 +48,24 @@
         }
       }
       
-      function createFolder(){
+      
+     function createNewFolder(folderName) {
+            gapi.client.load('drive', 'v2', function() {
+               var request = gapi.client.request({
+                'path': '/drive/v2/files',
+                'method': 'POST',
+                'body':{
+                    "title" : folderName,
+                    "description" : "Some",
+                    "mimeType": "application/vnd.google-apps.folder"
+                 }
+             });
+
+              request.execute(function(resp) { console.log(resp); });
+           });
+      }
+     
+    function createFolder(){
         data = new Object();
         data.title = 'New Folder';
         data.parents = [{"id":jQuery('#parent').val()}];
