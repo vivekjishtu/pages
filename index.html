@@ -1,11 +1,101 @@
 <!doctype html>
 <html>
   <head>
-    <title>pages.fefoo - Manage public files on Google Drive</title>
+    <title>myPublicDrive - Manage public files on Google Drive</title>
     <meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+	  <script src="upload.js"></script>
     <script type="text/javascript">
+        
+        
+        // Code revisons
+        // http://codemirror.net/3/demo/merge.html
+        // Demos http://codemirror.net/3/demo/
+        
+        /**
+        * Print information about the current user along with the Drive API
+        * settings.
+        */
+       function printAbout() {
+         var request = gapi.client.drive.about.get();
+         request.execute(function(resp) {
+           console.log('Current user name: ' + resp.name);
+           console.log('Root folder ID: ' + resp.rootFolderId);
+           console.log('Total quota (bytes): ' + resp.quotaBytesTotal);
+           console.log('Used quota (bytes): ' + resp.quotaBytesUsed);
+           console.log("Used by service:", resp.quotaBytesByService);
+           console.log("Max Upload Size:", resp.maxUploadSizes);
+           
+           
+         });
+       }
+        
+        /**
+        * Retrieve a list of revisions.
+        *
+        * @param {String} fileId ID of the file to retrieve revisions for.
+        * @param {Function} callback Function to call when the request is complete.
+        */
+       function retrieveRevisions(fileId, callback) {
+         var request = gapi.client.drive.revisions.list({
+           'fileId': fileId
+         });
+         request.execute(callback);
+       }
+        
+        function createPublicFolder(folderName) {
+            var body = {
+              'title': folderName,
+              'mimeType': "application/vnd.google-apps.folder"
+            };
+
+            var request = gapi.client.drive.files.insert({
+              'resource': body
+            });
+
+            request.execute(function(resp) {
+              console.log('Folder ID: ' + resp.id);
+              var permissionBody = {
+                'value': '',
+                'type': 'anyone',
+                'role': 'reader'
+              };
+              var permissionRequest = gapi.client.drive.permissions.insert({
+                'fileId': resp.id,
+                'resource': permissionBody
+              });
+              permissionRequest.execute(function(resp) { });
+            });
+        }
+        // "webViewLink": "https://googledrive.com/host/A1B2C3D4E5F6G7H8J9"
+        
+        // http://googleappsdeveloper.blogspot.in/2012/08/5-things-you-didnt-know-you-could-do.htmls
+        // Path to public file https://googledrive.com/host/[folderID]/
+        
+        // Save application configration
+        // https://developers.google.com/drive/web/appdata
+        
+        // Plugins 
+        // Beautify JS
+        
+        // Paint APP to crop and minor edit images before uploading
+        
+       // Using Dropbox
+       //http://websitesustainability.blogspot.co.uk/2011/03/alternative-hosting-approach-1-dropbox.html
+       
       var CLIENT_ID = '1038147979117-fmbmklc8lrrohocbgm42goahcmme7c90.apps.googleusercontent.com';
-      var SCOPES = 'https://www.googleapis.com/auth/drive.file';
+      var SCOPES = ['https://www.googleapis.com/auth/drive.file',
+                    "https://www.googleapis.com/auth/drive.apps.readonly",
+                    "https://www.googleapis.com/auth/drive.install"];
+	  
+	  
+	  function isProgressEnabled() {		
+		return "onprogress" in new XMLHttpRequest().upload;
+	  }
+	  
+	  function isCORSEnabled() {
+		return "withCredentials" in new XMLHttpRequest();
+	  }
 
       /**
        * Called when the client library is loaded to start the auth flow.
@@ -14,6 +104,57 @@
         window.setTimeout(checkAuth, 1);
       }
 
+	  
+	   /**
+        * Called when files are dropped on to the drop target. For each file,
+        * uploads the content to Drive & displays the results when complete.
+        */
+       function handleFileSelect(evt) {
+	   
+         evt.stopPropagation();
+         evt.preventDefault();
+
+         var files = evt.dataTransfer.files; // FileList object.
+         
+         var output = [];
+         for (var i = 0, f; f = files[i]; i++) {
+             var uploader = new MediaUploader({
+                 file: f,
+                 token: gapi.auth.getToken().access_token,
+                 onComplete: function(data) {
+                     var element = document.createElement("pre");
+                     element.appendChild(document.createTextNode(data));
+                     document.getElementById('results').appendChild(element);
+                 }
+             });
+			 uploader.onUploadProgress = function(event) {
+				 var percentComplete = (event.loaded / event.total)*100;
+				 console.log(percentComplete);
+			 };
+             uploader.upload();
+         }
+       }
+
+       /**
+        * Dragover handler to set the drop effect.
+        */
+       function handleDragOver(evt) {
+         evt.stopPropagation();
+         evt.preventDefault();
+         evt.dataTransfer.dropEffect = 'copy'; 
+		 
+		}
+
+       /**
+        * Wire up drag & drop listeners once page loads
+        */
+       document.addEventListener('DOMContentLoaded', function () {
+           var dropZone = document.getElementById("dropzone");;
+           dropZone.addEventListener('dragover', handleDragOver, false);
+           dropZone.addEventListener('drop', handleFileSelect, false);
+       });
+
+	  
       /**
        * Check if the current user has authorized the application.
        */
@@ -22,7 +163,89 @@
             {'client_id': CLIENT_ID, 'scope': SCOPES, 'immediate': true},
             handleAuthResult);
       }
+      
+      function shrinkURL() {
+          // https://api-ssl.bitly.com/v3/shorten?login=vivekjishtu&apiKey=R_9885eda0de3424792ee2c4bed76da7e6&longUrl=http%3A%2F%2Fbetaworks.com%2F&format=json&callback=shrink
+      }
+      
+      function save(fileId, content){
+        var contentArray = new Array(content.length);
+        for (var i = 0; i < contentArray.length; i++) {
+            contentArray[i] = content.charCodeAt(i);
+        }
+        var byteArray = new Uint8Array(contentArray);
+        var blob = new Blob([byteArray], {type: 'text/plain'});
+        var request = gapi.client.drive.files.get({'fileId': fileId});
+        request.execute(function(resp) {
+            updateFile(fileId,resp,blob,changesSaved);
+            //                 the callback^^^^^^
+        });
+     }
+      
+      function mvFileIntoFolder() {
+         // http://stackoverflow.com/questions/12889532/insert-a-file-to-a-particular-folder-using-google-drive-api?rq=1
+      }
+      
+      function getWebLink() {
+        //http://chronicle.com/blogs/profhacker/host-a-website-on-google-drive/46737  
+         // http://googledrive.com/host/[webLink]
+      }
+      
+      function uploadMultipart() {
+        //upload Multipart 
+        //
+        //
+        // http://masashi-k.blogspot.in/2013/08/upload-image-file-to-google-drive.html
+        //http://stackoverflow.com/questions/17360824/google-drive-api-resumable-upload-in-javascript?rq=1
+        
+      }
+	  
+	  function uploadWithProgress() {
+	    var myToken = gapi.auth.getToken();
+        var myXHR   = new XMLHttpRequest();
+		var boundary = "__fefoo__project__";
+		var delimiter = "\r\n--" + boundary + "\r\n";
+        var close_delim = "\r\n--" + boundary + "--";
+		
+		myXHR.upload.onprogress = function(event) {
+			console.log((event.loaded / event.total)*100);
+		};
+        myXHR.open('POST', "https://www.googleapis.com/upload/drive/v2/files?uploadType=multipart", true );
+        myXHR.setRequestHeader('Authorization', 'Bearer ' + myToken.access_token);
+		myXHR.setRequestHeader('Content-Type', 'multipart/related; boundary="' + boundary + '"');
+		
+		var base64Data = document.body.innerHTML;
+		
+		var contentType = "text/plain";
+		var metadata = {
+            'title': "testfile.txt",
+            'mimeType': contentType
+          };
+		var multipartRequestBody =
+               delimiter +
+               'Content-Type: application/json\r\n\r\n' +
+               JSON.stringify(metadata) +
+               delimiter +
+               'Content-Type: ' + contentType + '\r\n' +
+               'Content-Transfer-Encoding: base64\r\n' +
+               '\r\n' +
+               base64Data +
+               close_delim;
+			   
+		myXHR.setRequestHeader('Content-Length', multipartRequestBody.length);
 
+		myXHR.onreadystatechange = function(theProgressEvent) {
+            if (myXHR.readyState == 4) {
+//          1=connection ok, 2=Request received, 3=running, 4=terminated
+                if ( myXHR.status == 200 ) {
+//              200=OK
+                    console.log( myXHR.response );
+                }
+            }
+        };
+        myXHR.send(multipartRequestBody);
+	  }
+      
       /**
        * Called when authorization server replies.
        *
@@ -37,6 +260,13 @@
           // Access token has been successfully retrieved, requests can be sent to the API.
           filePicker.style.display = 'block';
           filePicker.onchange = uploadFile;
+          
+          // Load the drive APIs
+          
+          gapi.client.load('drive', 'v2', function() {
+              console.log("DRIVE is ready");
+              makeRequest();
+          });
         } else {
           // No access token could be retrieved, show the button to start the authorization flow.
           authButton.style.display = 'block';
@@ -48,6 +278,55 @@
         }
       }
       
+      
+      /**
+        * Update an existing file's metadata and content.
+        *
+        * @param {String} fileId ID of the file to update.
+        * @param {Object} fileMetadata existing Drive file's metadata.
+        * @param {File} fileData File object to read data from.
+        * @param {Function} callback Callback function to call when the request is complete.
+        */
+       function updateFile(fileId, fileMetadata, fileData, callback) {
+         const boundary = '-------314159265358979323846';
+         const delimiter = "\r\n--" + boundary + "\r\n";
+         const close_delim = "\r\n--" + boundary + "--";
+
+         var reader = new FileReader();
+         reader.readAsBinaryString(fileData);
+         reader.onload = function(e) {
+           var contentType = fileData.type || 'application/octet-stream';
+           // Updating the metadata is optional and you can instead use the value from drive.files.get.
+           var base64Data = btoa(reader.result);
+           var multipartRequestBody =
+               delimiter +
+               'Content-Type: application/json\r\n\r\n' +
+               JSON.stringify(fileMetadata) +
+               delimiter +
+               'Content-Type: ' + contentType + '\r\n' +
+               'Content-Transfer-Encoding: base64\r\n' +
+               '\r\n' +
+               base64Data +
+               close_delim;
+
+           var request = gapi.client.request({
+               'path': '/upload/drive/v2/files/' + fileId,
+               'method': 'PUT',
+               'params': {'uploadType': 'multipart', 'alt': 'json'},
+               'headers': {
+                 'Content-Type': 'multipart/mixed; boundary="' + boundary + '"'
+               },
+               'body': multipartRequestBody});
+           if (!callback) {
+             callback = function(file) {
+               console.log(file)
+             };
+           }
+           request.execute(callback);
+         }
+       }
+       
+       
       
      function createNewFolder(folderName) {
             gapi.client.load('drive', 'v2', function() {
@@ -63,6 +342,20 @@
 
               request.execute(function(resp) { console.log(resp); });
            });
+      }
+      
+      function changePermission() {
+          var resource = {
+              'value': 'default',
+              'type': 'anyone',
+              'role': 'reader'
+          };
+          var request = gapi.client.drive.permissions.insert({
+              'fileId': file.id,
+              'resource': resource
+          }).execute(function () {
+              alert("file set to public")
+          });    
       }
      
     function createFolder(){
@@ -157,6 +450,138 @@
           request.execute(callback);
         }
       }
+      
+      
+      function uploadChunckedData() {
+        var metadata = {
+            //'Content-Length': '200',
+            'title': "MyFileTitle"
+        };
+
+        var multipartRequestBody = JSON.stringify(metadata);
+        var request = gapi.client.request({
+            'path': '/upload/drive/v2/files',
+            'method': 'POST',
+            'params': {'uploadType': 'resumable'},
+            'headers': {
+                   // 'Authorization': 'Bearer ' + acToken, 
+                    'Content-Type': 'application/json; charset=UTF-8', 
+                    'X-Upload-Content-Type': 'text/plain',
+                    'X-Upload-Content-Length': "200000"
+            },
+            'body': multipartRequestBody
+        });
+        
+        callback = function(ret, raw) {
+            var obj = $.parseJSON(raw);
+            var uploadUrl = obj.gapiRequest["data"]["headers"]["Location"];
+            
+            console.log(ret, raw);
+            console.log(uploadUrl);
+        };
+        callback = uploadChunk;
+        request.execute(callback);
+      }
+      
+      function uploadChunk(ret, raw) {
+        var obj = $.parseJSON(raw);
+        var uploadUrl = obj.gapiRequest["data"]["headers"]["Location"];
+            
+        var request = gapi.client.request({
+            'path': uploadUrl.replace("https://content.googleapis.com", ""),
+            'method': 'PUT',
+            'headers': {
+                   // 'Authorization': 'Bearer ' + acToken,
+                   // 'Content-Length': "200",
+                    'Content-Range': "bytes 0-199/200000",
+                    'Content-Type': 'text/plain'
+            },
+            'body': "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        });
+            
+           // PUT {session_uri} HTTP/1.1
+           // Host: www.googleapis.com
+            //Content-Length: 524288
+            //Content-Type: image/jpeg
+           // Content-Range: bytes 0-524287/2000000
+          request.execute(function(ret, raw) {
+              console.log(ret, raw);
+          });
+      }
+      
+      /**
+       * Insert new file resumable.
+       *
+       * @param {File} fileData File object to read data from.
+       * @param {Function} callback Function to call when the request is complete.
+       */
+      function insertFileResumable(fileData, callback, progressCallback) {
+        const boundary = '-------314159265358979323846';
+        const delimiter = "\r\n--" + boundary + "\r\n";
+        const close_delim = "\r\n--" + boundary + "--";
+
+        var reader = new FileReader();
+        reader.readAsBinaryString(fileData);
+        reader.onload = function(e) {
+          var contentType = fileData.type || 'application/octet-stream';
+          var metadata = {
+            'title': fileData.name,
+            'mimeType': contentType
+          };
+
+          var base64Data = btoa(reader.result);
+          var multipartRequestBody =
+              delimiter +
+              // X-Upload-Content-Type: image/jpeg
+              // X-Upload-Content-Length: 2000000
+              'Content-Type: application/json\r\n\r\n' +
+              JSON.stringify(metadata) +
+              delimiter +
+              'Content-Type: ' + contentType + '\r\n' +
+              'Content-Transfer-Encoding: base64\r\n' +
+              '\r\n' +
+              base64Data +
+              close_delim;
+
+          var request = gapi.client.request({
+              'path': '/upload/drive/v2/files?uploadType=resumable',
+              'method': 'POST',
+              'params': {'uploadType': 'multipart'},
+              'headers': {
+                'Content-Type': 'multipart/mixed; boundary="' + boundary + '"'
+              },
+              'body': multipartRequestBody});
+          if (!callback) {
+            callback = function(file) {
+              console.log(file)
+            };
+          }
+          request.execute(callback);
+        }
+      }
+      //POST https://www.googleapis.com/upload/drive/v2/files?uploadType=resumable
+      
+      function makeRequest() {
+        var request = gapi.client.drive.files.list({'maxResults': 5 });
+        request.execute(function(resp) {
+			if(!resp.items) return;
+            for (i=0; i<resp.items.length; i++) {
+                if(resp.items[i].explicitlyTrashed) continue;
+                console.log(resp.items[i]);
+                var titulo = resp.items[i].title;
+                var fechaUpd = resp.items[i].modifiedDate;
+                var userUpd = resp.items[i].lastModifyingUserName;
+                var userEmbed = resp.items[i].embedLink;
+                var userAltLink = resp.items[i].alternateLink;
+
+                var fileInfo = document.createElement('li');
+                fileInfo.appendChild(document.createTextNode('TITLE: ' + titulo + 
+                    ' - LAST MODIF: ' + fechaUpd + ' - BY: ' + userUpd ));                
+                document.getElementById('content').appendChild(fileInfo);
+            }
+        });    
+    }
+
     </script>
     <script type="text/javascript" src="https://apis.google.com/js/client.js?onload=handleClientLoad"></script>
   </head>
@@ -164,5 +589,69 @@
     <!--Add a file picker for the user to start the upload process -->
     <input type="file" id="filePicker" style="display: none" />
     <input type="button" id="authorizeButton" style="display: none" value="Authorize" />
+    
+	<div id="dropzone">Drop Files over me</div>
+    <div id="content"></div>
+	<div id="results"></div>
+        
+        <button onclick="loadPicker()">Load Picker</button>
+        <script type="text/javascript">
+
+        // Use the Google API Loader script to load the google.picker script.
+        function loadPicker() {
+          gapi.load('picker', {'callback': createPicker});
+        }
+
+        // Use your own API developer key.
+        var developerKey = 'AIzaSyBiPJ9vThpgH2DXvCk5GPwlWHnBrtENHC8';
+        var YOUR_APP_ID = "1038147979117"; // CLIENT_ID;
+
+        // Create and render a Picker object for searching images.
+        function createPicker() {
+          var view = new google.picker.View(google.picker.ViewId.DOCS);
+          var AUTH_TOKEN = gapi.auth.getToken().access_token;
+          //view.setMimeTypes("image/png,image/jpeg,image/jpg");
+         // view.setMimeTypes("text/html");
+          var picker = new google.picker.PickerBuilder()
+            //  .enableFeature(google.picker.Feature.NAV_HIDDEN)
+              .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+              .setAppId(YOUR_APP_ID)
+              .setOAuthToken(AUTH_TOKEN)
+              .addView(view)
+              .addView(new google.picker.DocsUploadView())
+              .setDeveloperKey(developerKey)
+              .setCallback(pickerCallback)
+              .build();
+           picker.setVisible(true);
+        }
+
+        // A simple callback implementation.
+        function pickerCallback(data) {
+          if (data.action == google.picker.Action.PICKED) {
+            var fileId = data.docs[0].id;
+            alert('The user selected: ' + fileId);
+            printFile(fileId);
+          }
+        }
+        
+        
+        function printFile(fileId) {
+        var request = gapi.client.drive.files.get({
+            'fileId': fileId
+        });
+        request.execute(function(resp) {
+          if (!resp.error) {
+            console.log('Title: ' + resp.title);
+            console.log('Description: ' + resp.description);
+            console.log('MIME type: ' + resp.mimeType);
+          } else if (resp.error.code == 401) {
+            // Access token might have expired.
+            checkAuth();
+          } else {
+            console.log('An error occured: ' + resp.error.message);
+          }
+        });
+      }
+    </script>
   </body>
 </html>
